@@ -1,7 +1,5 @@
-
 import React, { useState } from 'react';
-import { GoogleGenAI } from "@google/genai";
-import { analyzeStartupPitch } from '../services/geminiService';
+import { analyzeStartupPitch, createClient } from '../services/geminiService';
 import { StartupIdea, AIAdviceResponse } from '../types';
 
 const PitchArena: React.FC = () => {
@@ -26,6 +24,7 @@ const PitchArena: React.FC = () => {
       setFeedback(result);
     } catch (err) {
       console.error(err);
+      alert((err as Error).message || 'Failed to analyze pitch. Check API key.');
     } finally {
       setLoading(false);
     }
@@ -34,18 +33,26 @@ const PitchArena: React.FC = () => {
   const generatePitchVideo = async () => {
     if (!feedback) return;
     
-    // API Key Selection check for Veo
-    if (window.aistudio && !(await window.aistudio.hasSelectedApiKey())) {
-      await window.aistudio.openSelectKey();
+    // If the repo host provides aistudio flow, prefer that for API key selection
+    if ((window as any).aistudio && !(await (window as any).aistudio.hasSelectedApiKey())) {
+      await (window as any).aistudio.openSelectKey();
+    }
+
+    let ai;
+    try {
+      ai = createClient();
+    } catch (err) {
+      console.error(err);
+      alert((err as Error).message || 'No API key available for video generation.');
+      return;
     }
 
     setVideoLoading(true);
     setVideoStatus('Initiating cinematic render engine...');
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const prompt = `A cinematic high-quality 3D promotional animation for a Zimbabwean startup named "${idea.title}" in the ${idea.industry} sector. The video should showcase the solution: ${idea.solution}. Use modern aesthetics with subtle Zimbabwean motifs. Professional lighting, 4k detail, smooth camera panning.`;
-      
+      const prompt = `A cinematic high-quality 3D promotional animation for a Zimbabwean startup named "${idea.title}" in the ${idea.industry} sector. The video should showcase the solution: ${idea.solution} and the target market: ${idea.targetMarket}. Keep runtime ~30 seconds, include local contexts (Harare/Bulawayo imagery) and energetic but professional voiceover instructions.`;
+
       let operation = await ai.models.generateVideos({
         model: 'veo-3.1-fast-generate-preview',
         prompt: prompt,
@@ -65,13 +72,21 @@ const PitchArena: React.FC = () => {
 
       const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
       if (downloadLink) {
-        const response = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
-        const blob = await response.blob();
-        setVideoUrl(URL.createObjectURL(blob));
+        // attempt to fetch the generated video (may require API key depending on host)
+        try {
+          const response = await fetch(`${downloadLink}`);
+          const blob = await response.blob();
+          setVideoUrl(URL.createObjectURL(blob));
+        } catch (fetchErr) {
+          console.warn('Failed to fetch video directly; providing link instead', fetchErr);
+          setVideoStatus('Video ready at provider. Please open the provider URL to download.');
+          // Optionally set a UI with the provider link
+        }
       }
     } catch (err) {
       console.error("Video Generation Error:", err);
       setVideoStatus('Generation failed. Please ensure you have selected a valid paid API key and try again.');
+      alert((err as Error).message || 'Video generation failed. Check API key and quotas.');
     } finally {
       setVideoLoading(false);
     }
@@ -178,7 +193,7 @@ const PitchArena: React.FC = () => {
               ) : (
                 <button 
                   onClick={generatePitchVideo}
-                  className="w-full py-6 bg-gradient-to-r from-indigo-600 to-emerald-600 text-white rounded-2xl font-black flex items-center justify-center gap-3 shadow-xl hover:scale-[1.02] transition-all"
+                  className="w-full py-6 bg-gradient-to-r from-indigo-600 to-emerald-600 text-white rounded-2xl font-black flex items-center justify-center gap-3 shadow-xl hover:scale-[1.02] transition-transform"
                 >
                   <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
                   Generate AI Promo Video
