@@ -1,0 +1,8 @@
+{
+  "name": "Copy0003 of RiseUpZim",
+  "description": "A youth-focused mentorship and entrepreneurship platform for Zimbabwean youth to tackle NEET rates and skills mismatch through courses, mentorship, and AI-driven career guidance.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
