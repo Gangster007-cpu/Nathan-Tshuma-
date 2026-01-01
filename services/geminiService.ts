@@ -1,9 +1,23 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { AIAdviceResponse, StartupIdea, ResumeData, Job, JobMatchResult, JobApplication } from "../types";
+import { getApiKey } from "./apiKey";
+
+/**
+ * Create a GoogleGenAI client using the configured API key.
+ * Throws a helpful error if no API key is present.
+ */
+export const createClient = (): GoogleGenAI => {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    throw new Error(
+      'No GenAI API key found. Set VITE_GENAI_API_KEY (or VITE_API_KEY) in your environment, set window.__GENAI_API_KEY in the browser, or use the aistudio key selector if available.'
+    );
+  }
+  return new GoogleGenAI({ apiKey });
+};
 
 export const getCareerAdvice = async (background: string, interests: string): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = createClient();
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: `As a professional career coach specializing in the Zimbabwean economy, analyze this user profile: 
@@ -16,7 +30,7 @@ export const getCareerAdvice = async (background: string, interests: string): Pr
 };
 
 export const matchJobsToUser = async (userProfile: { background: string; interests: string }, jobs: Job[]): Promise<JobMatchResult[]> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = createClient();
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: `Match user to jobs in Zimbabwe.
@@ -42,7 +56,7 @@ export const matchJobsToUser = async (userProfile: { background: string; interes
 };
 
 export const analyzeCandidateMatch = async (jobDetails: Job, application: JobApplication): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = createClient();
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: `Analyze if this candidate is a good fit for the job in Zimbabwe. 
@@ -54,7 +68,7 @@ export const analyzeCandidateMatch = async (jobDetails: Job, application: JobApp
 };
 
 export const optimizeResumeContent = async (data: ResumeData): Promise<{ experience: string; skills: string }> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = createClient();
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: `Optimize CV for Zim SME sector. Role: ${data.targetRole}. Exp: ${data.experience}, Skills: ${data.skills}`,
@@ -74,7 +88,7 @@ export const optimizeResumeContent = async (data: ResumeData): Promise<{ experie
 };
 
 export const getInterviewFeedback = async (history: any[], lastAnswer: string, industry: string): Promise<{ question: string; feedback: string }> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = createClient();
   const response = await ai.models.generateContent({
     model: "gemini-3-pro-preview",
     contents: `Mock interview for ${industry} role in Zimbabwe. History: ${JSON.stringify(history)}. Last Answer: ${lastAnswer}`,
@@ -94,7 +108,7 @@ export const getInterviewFeedback = async (history: any[], lastAnswer: string, i
 };
 
 export const analyzeAptitude = async (answers: string): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = createClient();
   const response = await ai.models.generateContent({
     model: "gemini-3-pro-preview",
     contents: `Analyze Zim career aptitude: ${answers}. Map to 3 career paths with local certification suggestions.`,
@@ -103,7 +117,7 @@ export const analyzeAptitude = async (answers: string): Promise<string> => {
 };
 
 export const searchActiveGrants = async () => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = createClient();
   const response = await ai.models.generateContent({
     model: "gemini-3-pro-preview",
     contents: `Search for active business/education grants for Zimbabweans closing after ${new Date().toISOString().split('T')[0]}.`,
@@ -116,7 +130,7 @@ export const searchActiveGrants = async () => {
 };
 
 export const analyzeStartupPitch = async (idea: StartupIdea): Promise<AIAdviceResponse> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = createClient();
   const response = await ai.models.generateContent({
     model: "gemini-3-pro-preview",
     contents: `Analyze Zimbabwean startup idea: ${JSON.stringify(idea)}`,
