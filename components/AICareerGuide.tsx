@@ -1,7 +1,6 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI, Modality, LiveServerMessage } from "@google/genai";
-import { getCareerAdvice, optimizeResumeContent, getInterviewFeedback, analyzeAptitude } from '../services/geminiService';
+import { getCareerAdvice, optimizeResumeContent, getInterviewFeedback, analyzeAptitude, createClient } from '../services/geminiService';
 import { ResumeData, InterviewMessage } from '../types';
 
 type ToolTab = 'roadmap' | 'resume' | 'interview' | 'aptitude';
@@ -44,7 +43,10 @@ const AICareerGuide: React.FC = () => {
     try {
       const result = await getCareerAdvice(background, interests);
       setAdvice(result);
-    } catch (err) { console.error(err); } finally { setLoading(false); }
+    } catch (err) { 
+      console.error(err);
+      alert((err as Error).message || 'Failed to generate roadmap. Check API key.');
+    } finally { setLoading(false); }
   };
 
   const handleResumeOptimize = async () => {
@@ -52,31 +54,49 @@ const AICareerGuide: React.FC = () => {
     try {
       const optimized = await optimizeResumeContent(resumeData);
       setResumeData({ ...resumeData, experience: optimized.experience, skills: optimized.skills });
-    } catch (err) { console.error(err); } finally { setOptimizing(false); }
+    } catch (err) { 
+      console.error(err);
+      alert((err as Error).message || 'Resume optimization failed. Check API key.');
+    } finally { setOptimizing(false); }
   };
 
   const startInterview = async () => {
     if (!industry) return;
     setInterviewStarted(true);
     setLoading(true);
-    const firstQ = await getInterviewFeedback([], "Start the interview", industry);
-    setChat([{ role: 'interviewer', text: firstQ.question }]);
-    setLoading(false);
+    try {
+      const firstQ = await getInterviewFeedback([], "Start the interview", industry);
+      setChat([{ role: 'interviewer', text: firstQ.question }]);
+    } catch (err) {
+      console.error(err);
+      alert((err as Error).message || 'Interview initiation failed. Check API key.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const startLiveInterview = async () => {
     if (!industry) return;
-    
-    // API Key Selection check for Live features
-    if (window.aistudio && !(await window.aistudio.hasSelectedApiKey())) {
-      await window.aistudio.openSelectKey();
+
+    // If the repo host provides aistudio flow, prefer that for API key selection
+    if ((window as any).aistudio && !(await (window as any).aistudio.hasSelectedApiKey())) {
+      await (window as any).aistudio.openSelectKey();
+    }
+
+    // Create the client via createClient helper (throws with helpful message if missing)
+    let ai: GoogleGenAI;
+    try {
+      ai = createClient();
+    } catch (err) {
+      console.error(err);
+      alert((err as Error).message || 'No API key available for live interview.');
+      return;
     }
 
     setIsLiveSession(true);
     setInterviewStarted(true);
     setLoading(true);
 
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
     const outputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
     audioContextRef.current = outputAudioContext;
@@ -98,7 +118,6 @@ const AICareerGuide: React.FC = () => {
               const int16 = new Int16Array(l);
               for (let i = 0; i < l; i++) int16[i] = inputData[i] * 32768;
               
-              const binary = '';
               const bytes = new Uint8Array(int16.buffer);
               let b64 = '';
               for (let i = 0; i < bytes.byteLength; i++) b64 += String.fromCharCode(bytes[i]);
@@ -161,6 +180,7 @@ const AICareerGuide: React.FC = () => {
       console.error("Live Audio Error:", err);
       setLoading(false);
       setIsLiveSession(false);
+      alert((err as Error).message || 'Live interview failed. Check microphone permissions and API key.');
     }
   };
 
@@ -180,7 +200,10 @@ const AICareerGuide: React.FC = () => {
     try {
       const nextStep = await getInterviewFeedback(chat, currentInput, industry);
       setChat(prev => [...prev, { role: 'interviewer', text: nextStep.question, feedback: nextStep.feedback }]);
-    } catch (err) { console.error(err); } finally { setLoading(false); }
+    } catch (err) { 
+      console.error(err);
+      alert((err as Error).message || 'Failed to get interview feedback. Check API key.');
+    } finally { setLoading(false); }
   };
 
   const APTITUDE_QUESTIONS = [
@@ -198,24 +221,30 @@ const AICareerGuide: React.FC = () => {
       setAptitudeStep(prev => prev + 1);
     } else {
       setLoading(true);
-      const result = await analyzeAptitude(newAnswers.join(" | "));
-      setAptitudeResult(result);
-      setLoading(false);
+      try {
+        const result = await analyzeAptitude(newAnswers.join(" | "));
+        setAptitudeResult(result);
+      } catch (err) {
+        console.error(err);
+        alert((err as Error).message || 'Aptitude analysis failed. Check API key.');
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
   const renderTabs = () => (
     <div className="flex bg-slate-100 p-1 rounded-2xl mb-8 overflow-x-auto scrollbar-hide">
       {[
-        { id: 'roadmap', label: 'Roadmap', icon: 'M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7' },
+        { id: 'roadmap', label: 'Roadmap', icon: 'M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13' },
         { id: 'resume', label: 'Resume', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
         { id: 'interview', label: 'Interview', icon: 'M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z' },
-        { id: 'aptitude', label: 'Aptitude', icon: 'M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z' }
+        { id: 'aptitude', label: 'Aptitude', icon: 'M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00' },
       ].map(tab => (
         <button
           key={tab.id}
           onClick={() => setActiveTab(tab.id as ToolTab)}
-          className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+          className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500'}`}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={tab.icon} /></svg>
           {tab.label}
@@ -259,7 +288,7 @@ const AICareerGuide: React.FC = () => {
                   className="w-full px-5 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-emerald-50 focus:border-emerald-500 outline-none transition-all h-32 resize-none"
                   required
                 />
-                <button type="submit" disabled={loading} className="w-full py-5 bg-emerald-600 text-white rounded-2xl font-black text-lg hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-200 flex items-center justify-center gap-3">
+                <button type="submit" disabled={loading} className="w-full py-5 bg-emerald-600 text-white rounded-2xl font-black text-lg hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-200">
                   {loading ? <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Generate My Zim Roadmap'}
                 </button>
               </form>
@@ -277,13 +306,13 @@ const AICareerGuide: React.FC = () => {
         {activeTab === 'resume' && (
           <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <input type="text" placeholder="Full Name" value={resumeData.fullName} onChange={e => setResumeData({...resumeData, fullName: e.target.value})} className="w-full px-5 py-3 rounded-xl border border-slate-200 outline-none" />
-              <input type="text" placeholder="Target Role" value={resumeData.targetRole} onChange={e => setResumeData({...resumeData, targetRole: e.target.value})} className="w-full px-5 py-3 rounded-xl border border-slate-200 outline-none" />
+              <input type="text" placeholder="Full Name" value={resumeData.fullName} onChange={e => setResumeData({...resumeData, fullName: e.target.value})} className="w-full px-5 py-3 rounded-xl border" />
+              <input type="text" placeholder="Target Role" value={resumeData.targetRole} onChange={e => setResumeData({...resumeData, targetRole: e.target.value})} className="w-full px-5 py-3 rounded-xl border" />
             </div>
-            <textarea placeholder="Experience (List your past jobs/tasks)" value={resumeData.experience} onChange={e => setResumeData({...resumeData, experience: e.target.value})} className="w-full px-5 py-3 rounded-xl border border-slate-200 outline-none h-32" />
-            <textarea placeholder="Skills (Tools you can use)" value={resumeData.skills} onChange={e => setResumeData({...resumeData, skills: e.target.value})} className="w-full px-5 py-3 rounded-xl border border-slate-200 outline-none h-24" />
-            <button onClick={handleResumeOptimize} disabled={optimizing} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black hover:bg-slate-800 transition-all shadow-xl flex items-center justify-center gap-2">
-              {optimizing ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg> AI Polish My Resume</>}
+            <textarea placeholder="Experience (List your past jobs/tasks)" value={resumeData.experience} onChange={e => setResumeData({...resumeData, experience: e.target.value})} className="w-full px-5 py-3 rounded-xl border h-28" />
+            <textarea placeholder="Skills (Tools you can use)" value={resumeData.skills} onChange={e => setResumeData({...resumeData, skills: e.target.value})} className="w-full px-5 py-3 rounded-xl border h-24" />
+            <button onClick={handleResumeOptimize} disabled={optimizing} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black hover:bg-slate-800 transition-all shadow-xl flex items-center justify-center gap-3">
+              {optimizing ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Optimize Resume for Zim Market'}
             </button>
           </div>
         )}
@@ -306,7 +335,7 @@ const AICareerGuide: React.FC = () => {
                     Text Interview Session
                   </button>
                   <button onClick={startLiveInterview} disabled={!industry || loading} className="w-full py-5 bg-emerald-600 text-white rounded-2xl font-black text-lg shadow-xl shadow-emerald-100 flex items-center justify-center gap-3">
-                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5"/></svg>
                     Start Live Voice Interview
                   </button>
                 </div>
@@ -346,8 +375,8 @@ const AICareerGuide: React.FC = () => {
                   {loading && <div className="bg-slate-50 text-slate-400 p-4 rounded-xl text-xs animate-pulse">Hiring manager is typing...</div>}
                 </div>
                 <div className="flex gap-2">
-                  <input type="text" value={userInput} onChange={e => setUserInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && sendInterviewResponse()} placeholder="Type your answer..." className="flex-1 px-5 py-4 rounded-2xl border-2 border-slate-200 outline-none focus:border-emerald-500" />
-                  <button onClick={sendInterviewResponse} className="p-4 bg-emerald-600 text-white rounded-2xl shadow-lg shadow-emerald-100"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg></button>
+                  <input type="text" value={userInput} onChange={e => setUserInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && sendInterviewResponse()} placeholder="Type your answer..." className="flex-1 px-4 py-3 rounded-2xl border border-slate-200" />
+                  <button onClick={sendInterviewResponse} className="p-4 bg-emerald-600 text-white rounded-2xl shadow-lg shadow-emerald-100"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M12 5l7 7-7 7" /></svg></button>
                 </div>
               </div>
             )}
@@ -366,11 +395,6 @@ const AICareerGuide: React.FC = () => {
                   <textarea 
                     placeholder="Tell us your thoughts..." 
                     className="w-full px-5 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-emerald-50 outline-none h-32 resize-none"
-                    onBlur={(e) => {
-                      if (e.target.value.trim()) {
-                         // We wait for the "Next" click
-                      }
-                    }}
                     id="apt-answer"
                   />
                   <button 
@@ -394,7 +418,7 @@ const AICareerGuide: React.FC = () => {
                   <h4 className="text-xl font-black text-emerald-900 mb-4">Your Career Matching Analysis</h4>
                   {aptitudeResult}
                 </div>
-                <button onClick={() => {setAptitudeResult(null); setAptitudeStep(0); setAptitudeAnswers([]);}} className="w-full py-4 border-2 border-slate-200 text-slate-500 rounded-2xl font-bold">Retake Test</button>
+                <button onClick={() => {setAptitudeResult(null); setAptitudeStep(0); setAptitudeAnswers([]);}} className="w-full py-4 border-2 border-slate-200 text-slate-500 rounded-2xl font-bold">Retake Assessment</button>
               </div>
             )}
           </div>
@@ -420,3 +444,4 @@ const AICareerGuide: React.FC = () => {
 };
 
 export default AICareerGuide;
+              
